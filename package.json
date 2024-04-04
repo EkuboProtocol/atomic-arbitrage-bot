@@ -1,0 +1,20 @@
+{
+  "name": "@ekubo/atomic-arbitrage-bot",
+  "version": "0.0.1",
+  "description": "Simple bot that regularly checks for the availability of atomic arbitrage using the Ekubo API and executes it",
+  "main": "index.js",
+  "scripts": {
+    "start": "ts-node index.ts"
+  },
+  "author": "Moody Salem",
+  "license": "GPL-3.0-or-later",
+  "devDependencies": {
+    "@types/node": "^20.12.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.3"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "starknet": "^6.7.0"
+  }
+}
