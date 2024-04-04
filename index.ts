@@ -1,5 +1,10 @@
-import "dotenv/config";
-import { Call, Contract, RpcProvider } from "starknet";
+import { config } from "dotenv";
+import path from "path";
+
+config({ path: path.resolve(path.join(__dirname, "./env.local")) });
+config();
+
+import { Account, Call, Contract, RpcProvider } from "starknet";
 import ROUTER_ABI from "./router-abi.json";
 
 const EKUBO_API_QUOTE_URL = process.env.EKUBO_API_QUOTE_URL;
@@ -12,6 +17,7 @@ const MAX_POWER_OF_2 = Math.max(
   MIN_POWER_OF_2 + 1,
   Math.min(65, Number(process.env.MAX_POWER_OF_2))
 );
+const MIN_PROFIT = BigInt(Math.max(0, Number(process.env.MIN_PROFIT)));
 const NUM_TOP_QUOTES_TO_ESTIMATE = Math.max(
   1,
   Number(process.env.NUM_TOP_QUOTES_TO_ESTIMATE)
@@ -22,6 +28,14 @@ const JSON_RPC_URL = process.env.JSON_RPC_URL;
 const RPC_PROVIDER = new RpcProvider({
   nodeUrl: JSON_RPC_URL,
 });
+
+console.log(process.env.ACCOUNT_PRIVATE_KEY, process.env.ACCOUNT_ADDRESS);
+
+const ACCOUNT = new Account(
+  RPC_PROVIDER,
+  process.env.ACCOUNT_PRIVATE_KEY!,
+  process.env.ACCOUNT_ADDRESS!
+);
 
 const ROUTER_CONTRACT = new Contract(
   ROUTER_ABI,
@@ -99,7 +113,7 @@ console.log("Starting with config", {
     )
       // filters to the on-paper profitable quotes (not accounting for gas)
       .filter((quote): quote is Exclude<typeof quote, null> =>
-        Boolean(quote && quote.profit > 0n)
+        Boolean(quote && quote.profit > MIN_PROFIT)
       )
       .sort(({ profit: profitA }, { profit: profitB }) =>
         Number(profitB - profitA)
@@ -148,7 +162,14 @@ console.log("Starting with config", {
         };
       });
 
-    console.log(`Top ${NUM_TOP_QUOTES_TO_ESTIMATE}`, topArbitrageResults);
+    if (topArbitrageResults.length > 0) {
+      console.log("Executing top arbitrage", topArbitrageResults[0]);
+      const { transaction_hash } = await ACCOUNT.execute(
+        topArbitrageResults[0].calls
+      );
+      const receipt = await RPC_PROVIDER.waitForTransaction(transaction_hash);
+      console.log("Arbitrage receipt", receipt);
+    }
 
     await sleep(CHECK_INTERVAL_MS);
   }
