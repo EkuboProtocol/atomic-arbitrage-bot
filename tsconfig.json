@@ -1,10 +1,12 @@
 {
   "compilerOptions": {
+    "resolveJsonModule": true,
     "target": "ESNext",
     "module": "commonjs",
     "lib": [
-      "ESNext",
+      "ESNext"
     ],
+    "esModuleInterop": true,
     "allowJs": true,
     "declaration": true,
     "strict": true,
