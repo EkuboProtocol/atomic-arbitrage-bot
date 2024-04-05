@@ -1,10 +1,6 @@
-import { config } from "dotenv";
-import path from "path";
+import "dotenv/config";
 
-config({ path: path.resolve(path.join(__dirname, "./env.local")) });
-config();
-
-import { Account, Call, Contract, RpcProvider } from "starknet";
+import { Account, Call, Contract, num, RpcProvider } from "starknet";
 import ROUTER_ABI from "./router-abi.json";
 
 const EKUBO_API_QUOTE_URL = process.env.EKUBO_API_QUOTE_URL;
@@ -29,12 +25,10 @@ const RPC_PROVIDER = new RpcProvider({
   nodeUrl: JSON_RPC_URL,
 });
 
-console.log(process.env.ACCOUNT_PRIVATE_KEY, process.env.ACCOUNT_ADDRESS);
-
 const ACCOUNT = new Account(
   RPC_PROVIDER,
-  process.env.ACCOUNT_PRIVATE_KEY!,
-  process.env.ACCOUNT_ADDRESS!
+  process.env.ACCOUNT_ADDRESS!,
+  process.env.ACCOUNT_PRIVATE_KEY!
 );
 
 const ROUTER_CONTRACT = new Contract(
@@ -134,6 +128,12 @@ console.log("Starting with config", {
           slippageAdjustedTotal = amount;
         }
 
+        const transferCall = {
+          contractAddress: TOKEN_TO_ARBITRAGE,
+          entrypoint: "transfer",
+          calldata: [ROUTER_CONTRACT.address, num.toHex(amount), "0x0"],
+        };
+
         if (splits.length === 1) {
           const split = splits[0];
           if (split.route.length === 1) {
@@ -142,9 +142,10 @@ console.log("Starting with config", {
             return {
               ...result,
               calls: [
+                transferCall,
                 ROUTER_CONTRACT.populate("clear_minimum", [
                   { contract_address: TOKEN_TO_ARBITRAGE },
-                  slippageAdjustedTotal,
+                  amount,
                 ]),
               ],
             };
@@ -154,9 +155,10 @@ console.log("Starting with config", {
         return {
           ...result,
           calls: [
+            transferCall,
             ROUTER_CONTRACT.populate("clear_minimum", [
               { contract_address: TOKEN_TO_ARBITRAGE },
-              slippageAdjustedTotal,
+              amount,
             ]),
           ],
         };
@@ -164,10 +166,13 @@ console.log("Starting with config", {
 
     if (topArbitrageResults.length > 0) {
       console.log("Executing top arbitrage", topArbitrageResults[0]);
+
       const { transaction_hash } = await ACCOUNT.execute(
         topArbitrageResults[0].calls
       );
+
       const receipt = await RPC_PROVIDER.waitForTransaction(transaction_hash);
+
       console.log("Arbitrage receipt", receipt);
     }
 
