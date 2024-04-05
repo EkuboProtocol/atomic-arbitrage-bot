@@ -6,7 +6,7 @@ import ROUTER_ABI from "./router-abi.json";
 const EKUBO_API_QUOTE_URL = process.env.EKUBO_API_QUOTE_URL;
 const TOKEN_TO_ARBITRAGE = process.env.TOKEN_TO_ARBITRAGE!;
 const MAX_HOPS = Math.max(2, Number(process.env.MAX_HOPS));
-const MAX_SPLITS = Math.max(2, Number(process.env.MAX_SPLITS));
+const MAX_SPLITS = Math.max(0, Number(process.env.MAX_SPLITS));
 const CHECK_INTERVAL_MS = Math.max(3000, Number(process.env.CHECK_INTERVAL_MS));
 const MIN_POWER_OF_2 = Math.max(32, Number(process.env.MIN_POWER_OF_2));
 const MAX_POWER_OF_2 = Math.max(
@@ -123,16 +123,16 @@ console.log("Starting with config", {
           throw new Error("unexpected number of splits");
         }
 
-        let slippageAdjustedTotal = (BigInt(total) * 99_990n) / 10_000n;
-        if (slippageAdjustedTotal < amount) {
-          slippageAdjustedTotal = amount;
-        }
-
         const transferCall = {
           contractAddress: TOKEN_TO_ARBITRAGE,
           entrypoint: "transfer",
           calldata: [ROUTER_CONTRACT.address, num.toHex(amount), "0x0"],
         };
+
+        const clearProfitsCall = ROUTER_CONTRACT.populate("clear_minimum", [
+          { contract_address: TOKEN_TO_ARBITRAGE },
+          amount,
+        ]);
 
         if (splits.length === 1) {
           const split = splits[0];
@@ -143,10 +143,53 @@ console.log("Starting with config", {
               ...result,
               calls: [
                 transferCall,
-                ROUTER_CONTRACT.populate("clear_minimum", [
-                  { contract_address: TOKEN_TO_ARBITRAGE },
-                  amount,
-                ]),
+                {
+                  contractAddress: ROUTER_CONTRACT.address,
+                  entrypoint: "multihop_swap",
+
+                  calldata: [
+                    num.toHex(split.route.length),
+                    ...split.route.reduce<{
+                      token: string;
+                      encoded: string[];
+                    }>(
+                      (memo, routeNode) => {
+                        const isToken1 =
+                          BigInt(memo.token) ===
+                          BigInt(routeNode.pool_key.token1);
+
+                        return {
+                          token: isToken1
+                            ? routeNode.pool_key.token0
+                            : routeNode.pool_key.token1,
+                          encoded: memo.encoded.concat([
+                            routeNode.pool_key.token0,
+                            routeNode.pool_key.token1,
+                            routeNode.pool_key.fee,
+                            num.toHex(routeNode.pool_key.tick_spacing),
+                            routeNode.pool_key.extension,
+                            num.toHex(
+                              BigInt(routeNode.sqrt_ratio_limit) % 2n ** 128n
+                            ),
+                            num.toHex(
+                              BigInt(routeNode.sqrt_ratio_limit) >> 128n
+                            ),
+                            routeNode.skip_ahead,
+                          ]),
+                        };
+                      },
+                      {
+                        token: TOKEN_TO_ARBITRAGE,
+                        encoded: [],
+                      }
+                    ).encoded,
+
+                    TOKEN_TO_ARBITRAGE,
+                    num.toHex(BigInt(split.specifiedAmount)),
+                    "0x0",
+                  ],
+                },
+                clearProfitsCall,
               ],
             };
           }
@@ -156,10 +199,58 @@ console.log("Starting with config", {
           ...result,
           calls: [
             transferCall,
-            ROUTER_CONTRACT.populate("clear_minimum", [
-              { contract_address: TOKEN_TO_ARBITRAGE },
-              amount,
-            ]),
+            {
+              contractAddress: ROUTER_CONTRACT.address,
+              entrypoint: "multi_multihop_swap",
+
+              calldata: [
+                num.toHex(splits.length),
+                ...splits.reduce<string[]>((memo, split) => {
+                  return memo.concat([
+                    num.toHex(split.route.length),
+                    ...split.route.reduce<{
+                      token: string;
+                      encoded: string[];
+                    }>(
+                      (memo, routeNode) => {
+                        const isToken1 =
+                          BigInt(memo.token) ===
+                          BigInt(routeNode.pool_key.token1);
+
+                        return {
+                          token: isToken1
+                            ? routeNode.pool_key.token0
+                            : routeNode.pool_key.token1,
+                          encoded: memo.encoded.concat([
+                            routeNode.pool_key.token0,
+                            routeNode.pool_key.token1,
+                            routeNode.pool_key.fee,
+                            num.toHex(routeNode.pool_key.tick_spacing),
+                            routeNode.pool_key.extension,
+                            num.toHex(
+                              BigInt(routeNode.sqrt_ratio_limit) % 2n ** 128n
+                            ),
+                            num.toHex(
+                              BigInt(routeNode.sqrt_ratio_limit) >> 128n
+                            ),
+                            routeNode.skip_ahead,
+                          ]),
+                        };
+                      },
+                      {
+                        token: TOKEN_TO_ARBITRAGE,
+                        encoded: [],
+                      }
+                    ).encoded,
+
+                    TOKEN_TO_ARBITRAGE,
+                    num.toHex(BigInt(split.specifiedAmount)),
+                    "0x0",
+                  ]);
+                }, []),
+              ],
+            },
+            clearProfitsCall,
           ],
         };
       });
@@ -167,11 +258,22 @@ console.log("Starting with config", {
     if (topArbitrageResults.length > 0) {
       console.log("Executing top arbitrage", topArbitrageResults[0]);
 
+      const cost = await ACCOUNT.estimateFee(topArbitrageResults[0].calls);
+
       const { transaction_hash } = await ACCOUNT.execute(
-        topArbitrageResults[0].calls
+        topArbitrageResults[0].calls,
+        // double suggested max fee
+        { maxFee: cost.suggestedMaxFee * 2n }
       );
 
-      const receipt = await RPC_PROVIDER.waitForTransaction(transaction_hash);
+      console.log(
+        "Sent transaction, waiting for receipt",
+        `${process.env.EXPLORER_TX_PREFIX}${transaction_hash}`
+      );
+
+      const receipt = await RPC_PROVIDER.waitForTransaction(transaction_hash, {
+        retryInterval: 3_000,
+      });
 
       console.log("Arbitrage receipt", receipt);
     }
