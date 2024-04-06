@@ -258,24 +258,33 @@ console.log("Starting with config", {
     if (topArbitrageResults.length > 0) {
       console.log("Executing top arbitrage", topArbitrageResults[0]);
 
-      const cost = await ACCOUNT.estimateFee(topArbitrageResults[0].calls);
+      try {
+        const cost = await ACCOUNT.estimateFee(topArbitrageResults[0].calls);
 
-      const { transaction_hash } = await ACCOUNT.execute(
-        topArbitrageResults[0].calls,
-        // double suggested max fee
-        { maxFee: cost.suggestedMaxFee * 2n }
-      );
+        const { transaction_hash } = await ACCOUNT.execute(
+          topArbitrageResults[0].calls,
+          // double suggested max fee
+          { maxFee: cost.suggestedMaxFee * 2n }
+        );
 
-      console.log(
-        "Sent transaction, waiting for receipt",
-        `${process.env.EXPLORER_TX_PREFIX}${transaction_hash}`
-      );
+        console.log(
+          "Sent transaction, waiting for receipt",
+          `${process.env.EXPLORER_TX_PREFIX}${transaction_hash}`
+        );
 
-      const receipt = await RPC_PROVIDER.waitForTransaction(transaction_hash, {
-        retryInterval: 3_000,
-      });
+        const receipt = await RPC_PROVIDER.waitForTransaction(
+          transaction_hash,
+          {
+            retryInterval: 3_000,
+          }
+        );
 
-      console.log("Arbitrage receipt", receipt);
+        console.log("Arbitrage receipt", receipt);
+      } catch (error) {
+        console.error("Failed to send arbitrage transaction", error);
+      }
+    } else {
+      console.log(new Date(), "No arbitrage found");
     }
 
     await sleep(CHECK_INTERVAL_MS);
