@@ -10,6 +10,7 @@ free, public routing API to compute and execute atomic arbitrage opportunities.
 It can be improved in a number of **important** ways, including:
 - The bot does not account for gas, so it is not always profitable
 - Arbitrage _could_ be done in the context of a lock without ever holding the token--this would mean you can arbitrage tokens without ever holding them
+- The free, public quoting API has multiple layers of caching. Arbitrage quotes may already be stale and fail when executed with low slippage tolerance
 
 # Instructions
 
