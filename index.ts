@@ -5,8 +5,7 @@ import ROUTER_ABI from "./router-abi.json";
 
 const EKUBO_API_QUOTE_URL = process.env.EKUBO_API_QUOTE_URL;
 const TOKEN_TO_ARBITRAGE = process.env.TOKEN_TO_ARBITRAGE!;
-const MAX_HOPS = Math.max(2, Number(process.env.MAX_HOPS));
-const MAX_SPLITS = Math.max(0, Number(process.env.MAX_SPLITS));
+const MAX_HOPS = Math.max(3, Number(process.env.MAX_HOPS));
 const CHECK_INTERVAL_MS = Math.max(3000, Number(process.env.CHECK_INTERVAL_MS));
 const MIN_POWER_OF_2 = Math.max(32, Number(process.env.MIN_POWER_OF_2));
 const MAX_POWER_OF_2 = Math.max(
@@ -60,7 +59,7 @@ export interface QuoteApiResponse {
 
 async function fetchQuote(amount: bigint): Promise<QuoteApiResponse | null> {
   const quote = await fetch(
-    `${EKUBO_API_QUOTE_URL}/${amount}/${TOKEN_TO_ARBITRAGE}/${TOKEN_TO_ARBITRAGE}?maxHops=${MAX_HOPS}&maxSplits=${MAX_SPLITS}`
+    `${EKUBO_API_QUOTE_URL}/${amount}/${TOKEN_TO_ARBITRAGE}/${TOKEN_TO_ARBITRAGE}?maxHops=${MAX_HOPS}&maxSplits=0`
   );
   if (!quote.ok) {
     return null;
@@ -80,8 +79,6 @@ console.log("Starting with config", {
   EKUBO_API_QUOTE_URL,
   JSON_RPC_URL,
   TOKEN_TO_ARBITRAGE,
-  MAX_HOPS,
-  MAX_SPLITS,
   CHECK_INTERVAL_MS,
   AMOUNTS_TO_QUOTE,
 });
